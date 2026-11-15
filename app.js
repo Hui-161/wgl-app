@@ -176,6 +176,8 @@ async function showMap() {
     map = L.map("map", { zoomControl: true }).setView([51.3397, 12.3731], 13);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19, attribution: "© OpenStreetMap-Mitwirkende",
+      // OSM-Nutzungsregeln verlangen eine Herkunftsangabe – nur die Domain, ohne Seitenpfad
+      referrerPolicy: "strict-origin-when-cross-origin",
     }).addTo(map);
     markerLayer = L.layerGroup().addTo(map);
   }
