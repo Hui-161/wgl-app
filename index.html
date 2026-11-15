@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://telegram.org; style-src 'self';
+               connect-src 'self' https://raw.githubusercontent.com; img-src 'self' data:;
+               base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Was geht Leipzig?</title>
+<link rel="stylesheet" href="app.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Was geht Leipzig?</h1>
+    <span id="stand" class="muted"></span>
+  </div>
+  <input id="suche" type="search" placeholder="Band, Party oder Location suchen" autocomplete="off">
+  <div class="range">
+    <button id="zurueck" class="arrow" aria-label="zurück">‹</button>
+    <div id="zeitraum" class="chips" role="tablist"></div>
+    <button id="weiter" class="arrow" aria-label="weiter">›</button>
+  </div>
+  <div class="range-label"><strong id="zeitraum-text"></strong>
+    <label class="date-pick">📅<input id="datum" type="date" aria-label="Datum wählen"></label></div>
+  <div id="kategorien" class="chips scroll"></div>
+  <div id="genres" class="chips scroll"></div>
+</header>
+
+<main>
+  <section id="liste" aria-live="polite"></section>
+  <section id="gemerkt" hidden></section>
+  <section id="einstellungen" hidden>
+    <h2>Locations</h2>
+    <p class="muted">Ausgeblendete Locations erscheinen nirgends in der Liste.</p>
+    <input id="loc-suche" type="search" placeholder="Location suchen" autocomplete="off">
+    <div class="loc-actions"><button id="loc-alle">Alle zeigen</button></div>
+    <ul id="loc-liste" class="loc-list"></ul>
+    <h2>Über</h2>
+    <p class="muted">Termine automatisch von den Seiten der Leipziger Locations – ohne Gewähr, im Zweifel
+      gilt die Seite der Location. Diese Seite speichert keine Daten außer deinen Einstellungen auf deinem Gerät.</p>
+  </section>
+</main>
+
+<nav class="tabs">
+  <button data-tab="liste" class="active">Termine</button>
+  <button data-tab="gemerkt">Gemerkt <span id="merk-zahl"></span></button>
+  <button data-tab="einstellungen">Locations</button>
+</nav>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-backdrop" data-close></div>
+  <article class="sheet-body" role="dialog" aria-modal="true">
+    <button class="sheet-close" data-close aria-label="schließen">×</button>
+    <div id="detail"></div>
+  </article>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
