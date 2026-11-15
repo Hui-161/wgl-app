@@ -15,12 +15,37 @@ const MAX_ROWS = 400;
 const tg = window.Telegram && window.Telegram.WebApp;
 const IN_TG = !!(tg && tg.initData);
 if (IN_TG) { document.documentElement.classList.add("tg"); tg.ready(); tg.expand(); }
+// Telegram-CloudStorage (pro Nutzer, auf allen Geräten gleich; Bot API 6.9+, max. 4096 Zeichen je Wert)
+const CLOUD = IN_TG && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast("6.9");
+const CLOUD_KEYS = ["cats", "genres", "hidden", "savedKeys"];
 
-// --- Speicher (Gerät; in Telegram später CloudStorage) ----------------------------
+// --- Speicher: Gerät (localStorage), in Telegram zusätzlich CloudStorage -------------
 const store = {
   get(key, fallback) { try { const v = localStorage.getItem("wgl:" + key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
-  set(key, value) { try { localStorage.setItem("wgl:" + key, JSON.stringify(value)); } catch { /* privat/voll */ } },
+  set(key, value) {
+    try { localStorage.setItem("wgl:" + key, JSON.stringify(value)); } catch { /* privat/voll */ }
+    if (CLOUD && CLOUD_KEYS.includes(key)) {
+      const s = JSON.stringify(value);
+      if (s.length <= 4096) try { tg.CloudStorage.setItem(key, s); } catch { /* ältere Clients */ }
+    }
+  },
 };
+function cloudLoad() {             // Einstellungen aus Telegram holen (Vorrang vor dem Gerät)
+  if (!CLOUD) return Promise.resolve({});
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({}), 2500);
+    try {
+      tg.CloudStorage.getItems(CLOUD_KEYS, (err, values) => {
+        clearTimeout(timer);
+        const out = {};
+        if (!err && values) for (const k of CLOUD_KEYS) {
+          try { if (values[k]) out[k] = JSON.parse(values[k]); } catch { /* kaputter Wert */ }
+        }
+        resolve(out);
+      });
+    } catch { clearTimeout(timer); resolve({}); }
+  });
+}
 
 // --- Hilfsfunktionen -------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -269,7 +294,12 @@ function icsFor(e) {
   return lines.join("\r\n");
 }
 
-function botLink(e) { return state.data.bot ? `https://t.me/${state.data.bot}?start=e_${e.k}` : null; }
+function botLink(e, kind = "e") { return state.data.bot ? `https://t.me/${state.data.bot}?start=${kind}_${e.k}` : null; }
+
+function persistSaved() {           // Gerät: mit Titel; Telegram-Cloud: nur Kennungen (Größenlimit)
+  store.set("saved", state.saved);
+  store.set("savedKeys", Object.keys(state.saved).slice(-300));
+}
 
 function openDetail(e) {
   const box = $("detail"); box.replaceChildren();
@@ -285,16 +315,17 @@ function openDetail(e) {
   const saved = !!state.saved[e.k];
   actions.append(el("button", { class: saved ? "" : "primary", on: { click: () => {
     if (state.saved[e.k]) delete state.saved[e.k]; else state.saved[e.k] = { d: e.d, ti: e.ti, v: e.v };
-    store.set("saved", state.saved); render(); openDetail(e); } } }, saved ? "★ Gemerkt" : "☆ Merken"));
+    persistSaved(); render(); openDetail(e); } } }, saved ? "★ Gemerkt" : "☆ Merken"));
+  // Erinnerung am Tag selbst kann nur der Bot schicken -> Link in den Bot (start=m_<Kennung>)
+  if (botLink(e, "m")) actions.append(linkButton("🔔 Im Bot erinnern", botLink(e, "m")));
   if (safeUrl(e.u)) actions.append(linkButton("Zur Location-Seite ↗", e.u));
   if (IN_TG && botLink(e)) {
-    actions.append(linkButton("Im Bot: Kalender & Erinnerung", botLink(e)));
+    actions.append(linkButton("📅 Kalender (im Bot)", botLink(e)));   // Downloads gehen in Mini-Apps nicht zuverlässig
   } else {
     actions.append(el("button", { on: { click: () => {
       const a = el("a", { href: URL.createObjectURL(new Blob([icsFor(e)], { type: "text/calendar" })),
         download: `${e.d}-${firstAct(e.ti).slice(0, 30).replace(/[^\wäöüß-]+/gi, "_")}.ics` });
       document.body.append(a); a.click(); a.remove(); } } }, "📅 In den Kalender"));
-    if (botLink(e)) actions.append(linkButton("Im Telegram-Bot öffnen", botLink(e)));
   }
   actions.append(el("button", { on: { click: () => share(e) } }, "Teilen"));
   if (v.lat !== undefined) actions.append(linkButton("In OpenStreetMap ↗",
@@ -309,6 +340,7 @@ function openDetail(e) {
       linkButton("Spotify", `https://open.spotify.com/search/${q}`)));
   }
   $("sheet").hidden = false;
+  if (IN_TG) tg.BackButton.show();
   history.replaceState(null, "", "#t=" + e.k);
 }
 
@@ -320,7 +352,12 @@ function share(e) {
   else navigator.clipboard.writeText(`${text}\n${url}`).then(() => alert("Link kopiert."));
 }
 
-function closeSheet() { $("sheet").hidden = true; history.replaceState(null, "", location.pathname + location.search); }
+function closeSheet() {
+  $("sheet").hidden = true;
+  if (IN_TG) tg.BackButton.hide();
+  history.replaceState(null, "", location.pathname + location.search);
+}
+if (IN_TG) tg.BackButton.onClick(closeSheet);   // Telegram-Zurück-Pfeil schließt das Detailblatt
 
 // --- Ereignisse --------------------------------------------------------------------
 $("zurueck").addEventListener("click", () => { state.range = step(state.range, -1); state.rangeKey = ""; render(); });
@@ -363,6 +400,17 @@ async function load() {
   }
   data.events = data.events.filter((e) => e.d >= today());
   state.data = data;
+  const cloud = await cloudLoad();   // in Telegram: Einstellungen von allen Geräten
+  if (Array.isArray(cloud.cats)) state.cats = new Set(cloud.cats);
+  if (Array.isArray(cloud.genres)) state.genres = new Set(cloud.genres);
+  if (Array.isArray(cloud.hidden)) state.hidden = new Set(cloud.hidden);
+  if (Array.isArray(cloud.savedKeys)) {
+    const known = new Map(data.events.map((e) => [e.k, e]));
+    for (const k of cloud.savedKeys) if (!state.saved[k]) {
+      const e = known.get(k);
+      state.saved[k] = e ? { d: e.d, ti: e.ti, v: e.v } : { d: "", ti: "", v: "" };
+    }
+  }
   if (!$("stand").textContent) {
     const s = new Date(data.stand);
     $("stand").textContent = `Stand ${pad(s.getDate())}.${pad(s.getMonth() + 1)}. ${pad(s.getHours())}:${pad(s.getMinutes())}`;
