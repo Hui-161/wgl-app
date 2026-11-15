@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self' https://telegram.org; style-src 'self';
-               connect-src 'self' https://raw.githubusercontent.com; img-src 'self' data:;
+               connect-src 'self' https://raw.githubusercontent.com;
+               img-src 'self' data: https://tile.openstreetmap.org;
                base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Was geht Leipzig?</title>
@@ -32,6 +33,10 @@
 
 <main>
   <section id="liste" aria-live="polite"></section>
+  <section id="karte" hidden>
+    <div id="map" aria-label="Karte der Termine"></div>
+    <p id="map-hinweis" class="muted"></p>
+  </section>
   <section id="gemerkt" hidden></section>
   <section id="einstellungen" hidden>
     <h2>Locations</h2>
@@ -47,6 +52,7 @@
 
 <nav class="tabs">
   <button data-tab="liste" class="active">Termine</button>
+  <button data-tab="karte">Karte</button>
   <button data-tab="gemerkt">Gemerkt <span id="merk-zahl"></span></button>
   <button data-tab="einstellungen">Locations</button>
 </nav>

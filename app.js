@@ -154,10 +154,67 @@ function renderList(target, events, emptyText) {
   }
 }
 
+// --- Karte (Leaflet, erst beim Öffnen des Reiters geladen) ---------------------------
+let map = null, markerLayer = null, leafletLoading = null;
+
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (leafletLoading) return leafletLoading;
+  leafletLoading = new Promise((resolve, reject) => {
+    document.head.append(el("link", { rel: "stylesheet", href: "vendor/leaflet/leaflet.css" }));
+    const s = el("script", { src: "vendor/leaflet/leaflet.js" });
+    s.onload = resolve; s.onerror = reject;
+    document.head.append(s);
+  });
+  return leafletLoading;
+}
+
+async function showMap() {
+  try { await loadLeaflet(); } catch { $("map-hinweis").textContent = "Die Karte konnte nicht geladen werden."; return; }
+  if (!map) {
+    L.Icon.Default.imagePath = "vendor/leaflet/images/";
+    map = L.map("map", { zoomControl: true }).setView([51.3397, 12.3731], 13);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: "© OpenStreetMap-Mitwirkende",
+    }).addTo(map);
+    markerLayer = L.layerGroup().addTo(map);
+  }
+  map.invalidateSize();
+  renderMap(true);
+}
+
+function renderMap(fit) {
+  if (!map || state.tab !== "karte") return;
+  markerLayer.clearLayers();
+  const byVenue = new Map();
+  let withoutPlace = 0;
+  for (const e of state.data.events.filter(visible)) {
+    const v = state.data.venues[e.v];
+    if (!v || v.lat === undefined) { withoutPlace++; continue; }
+    if (!byVenue.has(e.v)) byVenue.set(e.v, []);
+    byVenue.get(e.v).push(e);
+  }
+  const points = [];
+  for (const [key, evs] of byVenue) {
+    const v = state.data.venues[key];
+    const pop = el("div", { class: "map-pop" }, el("h4", {}, `${v.n} (${evs.length})`),
+      evs.slice(0, 12).map((e) => el("button", { on: { click: () => openDetail(e) } },
+        el("span", { class: "when" }, `${short(e.d)} ${e.t || ""}`), e.ti)),
+      evs.length > 12 ? el("p", { class: "muted" }, `… und ${evs.length - 12} weitere`) : null);
+    L.marker([v.lat, v.lon], { title: v.n }).bindPopup(pop, { maxWidth: 260 }).addTo(markerLayer);
+    points.push([v.lat, v.lon]);
+  }
+  if (fit && points.length) map.fitBounds(points, { padding: [30, 30], maxZoom: 15 });
+  const total = byVenue.size;
+  $("map-hinweis").textContent = (total ? `${total} Locations auf der Karte.` : "Keine Termine mit Ort im gewählten Zeitraum.")
+    + (withoutPlace ? ` ${withoutPlace} Termine ohne bekannten Ort (z. B. bewusst verschleierte Szene-Orte) nur in der Liste.` : "");
+}
+
 function render() {
   if (!state.data) return;
   renderChips();
   const events = state.data.events.filter(visible);
+  renderMap(true);
   renderList($("liste"), events, state.search ? "Nichts gefunden." :
     "In diesem Zeitraum steht (mit diesen Filtern) nichts an. Filter lockern oder weiterblättern.");
   renderSaved();
@@ -238,7 +295,7 @@ function openDetail(e) {
     if (botLink(e)) actions.append(linkButton("Im Telegram-Bot öffnen", botLink(e)));
   }
   actions.append(el("button", { on: { click: () => share(e) } }, "Teilen"));
-  if (v.lat) actions.append(linkButton("Karte ↗",
+  if (v.lat !== undefined) actions.append(linkButton("In OpenStreetMap ↗",
     `https://www.openstreetmap.org/?mlat=${v.lat}&mlon=${v.lon}#map=17/${v.lat}/${v.lon}`));
   box.append(actions);
 
@@ -280,8 +337,9 @@ document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeShe
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
   state.tab = b.dataset.tab;
   document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
-  for (const id of ["liste", "gemerkt", "einstellungen"]) $(id).hidden = id !== state.tab;
+  for (const id of ["liste", "karte", "gemerkt", "einstellungen"]) $(id).hidden = id !== state.tab;
   if (state.tab === "einstellungen") renderVenues();
+  if (state.tab === "karte") showMap();
   window.scrollTo(0, 0);
 }));
 const setTop = () => document.documentElement.style.setProperty("--top-h", $("suche").closest("header").offsetHeight + "px");
